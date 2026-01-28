@@ -1,7 +1,12 @@
 import { CliOptions } from "../types/cli";
 
 export const DEFAULT_DELETE_DAYS = 180;
-const KNOWN_FLAGS = ["--delete_articles", "--zip_file", "--create_backup"];
+const KNOWN_FLAGS = [
+  "--delete_articles",
+  "--delete_articles_trim",
+  "--zip_file",
+  "--create_backup",
+];
 
 function parseNumber(value: string, flagName: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -61,6 +66,29 @@ export function parseCliArgs(args: string[]): CliOptions {
 
     if (!arg.startsWith("--")) {
       throw new Error(`Unexpected argument: ${arg}`);
+    }
+
+    if (arg.startsWith("--delete_articles_trim")) {
+      let value: string | undefined;
+
+      if (arg.includes("=")) {
+        value = arg.split("=")[1];
+      } else if (args[i + 1] && !args[i + 1].startsWith("--")) {
+        value = args[i + 1];
+        i += 1;
+      }
+
+      if (!value) {
+        throw new Error("--delete_articles_trim requires a count value");
+      }
+
+      const count = parseNumber(value, "--delete_articles_trim");
+      if (count <= 0) {
+        throw new Error("--delete_articles_trim requires a positive integer");
+      }
+
+      options.deleteArticlesTrimCount = count;
+      continue;
     }
 
     if (arg.startsWith("--delete_articles")) {

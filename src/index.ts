@@ -75,9 +75,10 @@ async function databaseHasData(): Promise<boolean> {
     await ensureDatabaseExists();
 
     const { getDatabaseStatus } = await import("./modules/status");
-    const { deleteOldUnapprovedArticles } = await import(
-      "./modules/deleteArticles"
-    );
+    const {
+      deleteOldUnapprovedArticles,
+      deleteOldestEligibleArticles,
+    } = await import("./modules/deleteArticles");
     const { createDatabaseBackupZipFile } = await import("./modules/backup");
     const { importZipFileToDatabase } = await import("./modules/zipImport");
 
@@ -107,6 +108,18 @@ async function databaseHasData(): Promise<boolean> {
           );
         }
       }
+    }
+
+    if (options.deleteArticlesTrimCount !== undefined) {
+      logger.info(
+        `Trimming ${options.deleteArticlesTrimCount} oldest eligible articles without relevance or approval`,
+      );
+      const result = await deleteOldestEligibleArticles(
+        options.deleteArticlesTrimCount,
+      );
+      logger.info(
+        `Trimmed ${result.deletedCount} of ${result.foundCount} eligible articles (requested ${result.requestedCount}).`,
+      );
     }
 
     if (options.deleteArticlesDays !== undefined) {

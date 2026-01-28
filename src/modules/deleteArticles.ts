@@ -18,6 +18,12 @@ export type DeleteArticlesResult = {
   cutoffDate: string;
 };
 
+export type DeleteTrimResult = {
+  requestedCount: number;
+  foundCount: number;
+  deletedCount: number;
+};
+
 export async function deleteOldUnapprovedArticles(
   daysOldThreshold: number,
 ): Promise<DeleteArticlesResult> {
@@ -131,4 +137,83 @@ export async function deleteOldUnapprovedArticles(
   }
 
   return { deletedCount, cutoffDate: cutoffDateOnly };
+}
+
+export async function deleteOldestEligibleArticles(
+  requestedCount: number,
+): Promise<DeleteTrimResult> {
+  const [relevantRows, approvedRows] = await Promise.all([
+    ArticleIsRelevant.findAll({
+      attributes: ["articleId"],
+      raw: true,
+    }),
+    ArticleApproved.findAll({
+      attributes: ["articleId"],
+      raw: true,
+    }),
+  ]);
+
+  const protectedIds = new Set<number>();
+
+  for (const row of relevantRows) {
+    const articleId = Number((row as { articleId?: number }).articleId);
+    if (Number.isFinite(articleId)) {
+      protectedIds.add(articleId);
+    }
+  }
+
+  for (const row of approvedRows) {
+    const articleId = Number((row as { articleId?: number }).articleId);
+    if (Number.isFinite(articleId)) {
+      protectedIds.add(articleId);
+    }
+  }
+
+  const conditions: Record<string, unknown>[] = [
+    { publishedDate: { [Op.not]: null } },
+  ];
+
+  if (protectedIds.size > 0) {
+    conditions.push({ id: { [Op.notIn]: Array.from(protectedIds) } });
+  }
+
+  const rows = await Article.findAll({
+    attributes: ["id"],
+    where: { [Op.and]: conditions },
+    order: [
+      ["publishedDate", "ASC"],
+      ["id", "ASC"],
+    ],
+    limit: requestedCount,
+    raw: true,
+  });
+
+  const ids = rows
+    .map((row) => Number((row as { id?: number }).id))
+    .filter((id) => Number.isFinite(id));
+
+  const foundCount = ids.length;
+
+  logger.info(
+    `Found ${foundCount} eligible articles for trim (requested ${requestedCount}).`,
+  );
+
+  if (foundCount === 0) {
+    return { requestedCount, foundCount, deletedCount: 0 };
+  }
+
+  let deletedCount = 0;
+  let batchNumber = 0;
+
+  for (let i = 0; i < ids.length; i += DELETE_BATCH_SIZE) {
+    batchNumber += 1;
+    const batchIds = ids.slice(i, i + DELETE_BATCH_SIZE);
+    await Article.destroy({ where: { id: { [Op.in]: batchIds } } });
+    deletedCount += batchIds.length;
+    logger.info(
+      `Deleted ${deletedCount} of ${foundCount} trim articles (batch ${batchNumber}).`,
+    );
+  }
+
+  return { requestedCount, foundCount, deletedCount };
 }
