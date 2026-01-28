@@ -9,14 +9,18 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.12",
+    "archiver": "^6.0.2",
     "csv-parser": "^3.0.0",
     "dotenv": "^16.4.5",
+    "json2csv": "^5.0.7",
     "newsnexus10db": "file:../NewsNexus10Db",
     "sequelize": "^6.37.3",
     "winston": "^3.13.0"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.2",
     "@types/adm-zip": "^0.5.5",
+    "@types/json2csv": "^5.0.7",
     "@types/node": "^20.11.30",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"

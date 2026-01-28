@@ -78,7 +78,14 @@ async function databaseHasData(): Promise<boolean> {
     const { deleteOldUnapprovedArticles } = await import(
       "./modules/deleteArticles"
     );
+    const { createDatabaseBackupZipFile } = await import("./modules/backup");
     const { importZipFileToDatabase } = await import("./modules/zipImport");
+
+    if (options.createBackup) {
+      logger.info("Creating database backup zip file");
+      const backupPath = await createDatabaseBackupZipFile();
+      logger.info(`Backup created at: ${backupPath}`);
+    }
 
     if (options.zipFilePath) {
       const hasData = await databaseHasData();

@@ -1,7 +1,7 @@
 import { CliOptions } from "../types/cli";
 
 export const DEFAULT_DELETE_DAYS = 180;
-const KNOWN_FLAGS = ["--delete_articles", "--zip_file"];
+const KNOWN_FLAGS = ["--delete_articles", "--zip_file", "--create_backup"];
 
 function parseNumber(value: string, flagName: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -97,6 +97,15 @@ export function parseCliArgs(args: string[]): CliOptions {
       }
 
       options.zipFilePath = value;
+      continue;
+    }
+
+    if (arg.startsWith("--create_backup")) {
+      if (arg.includes("=") || (args[i + 1] && !args[i + 1].startsWith("--"))) {
+        throw new Error("--create_backup does not take a value");
+      }
+
+      options.createBackup = true;
       continue;
     }
 
