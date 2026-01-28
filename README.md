@@ -16,6 +16,10 @@ This is a TypeScript microservice for managing the NewsNexus10 database. It uses
   - `npm run start -- --delete_articles`
 - Delete articles older than a specific number of days:
   - `npm run start -- --delete_articles 365`
+- Trim the oldest eligible articles (by publishedDate):
+  - `npm run start -- --delete_articles_trim 3`
+- Create a database backup zip file:
+  - `npm run start -- --create_backup`
 - Import a zip backup of CSV files:
   - `npm run start -- --zip_file "/full/path/to/backup.zip"`
 - Combine operations (import then delete, then status):
