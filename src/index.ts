@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { QueryTypes } from "sequelize";
 import { DEFAULT_DELETE_DAYS, parseCliArgs } from "./modules/cli";
 import { DatabaseStatus } from "./types/status";
 
@@ -42,6 +43,25 @@ async function ensureDatabaseExists(): Promise<void> {
   }
 }
 
+async function databaseHasData(): Promise<boolean> {
+  const tables = await sequelize.query<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';",
+    { type: QueryTypes.SELECT },
+  );
+
+  for (const { name } of tables) {
+    const rows = await sequelize.query(
+      `SELECT 1 FROM "${name}" LIMIT 1;`,
+      { type: QueryTypes.SELECT },
+    );
+    if (rows.length > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 (async () => {
   try {
     const options = parseCliArgs(process.argv.slice(2));
@@ -56,15 +76,24 @@ async function ensureDatabaseExists(): Promise<void> {
     const { importZipFileToDatabase } = await import("./modules/zipImport");
 
     if (options.zipFilePath) {
-      logger.info(`Importing database updates from zip: ${options.zipFilePath}`);
-      const result = await importZipFileToDatabase(options.zipFilePath);
-      logger.info(
-        `Imported ${result.totalRecords} records across ${result.importedTables.length} tables`,
-      );
-      if (result.skippedFiles.length > 0) {
+      const hasData = await databaseHasData();
+      if (hasData) {
         logger.warn(
-          `Skipped files with no matching model: ${result.skippedFiles.join(", ")}`,
+          "Zip import skipped because the database already contains data. Displaying status only.",
         );
+      } else {
+        logger.info(
+          `Importing database updates from zip: ${options.zipFilePath}`,
+        );
+        const result = await importZipFileToDatabase(options.zipFilePath);
+        logger.info(
+          `Imported ${result.totalRecords} records across ${result.importedTables.length} tables`,
+        );
+        if (result.skippedFiles.length > 0) {
+          logger.warn(
+            `Skipped files with no matching model: ${result.skippedFiles.join(", ")}`,
+          );
+        }
       }
     }
 

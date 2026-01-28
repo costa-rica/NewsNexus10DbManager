@@ -3,6 +3,7 @@ import csvParser from "csv-parser";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { DataTypes } from "sequelize";
 import * as db from "newsnexus10db";
 import { sequelize } from "newsnexus10db";
 import { logger } from "../config/logger";
@@ -13,7 +14,7 @@ type ImportZipResult = {
   skippedFiles: string[];
 };
 
-type ModelRegistry = Record<string, { bulkCreate: Function }>;
+type ModelRegistry = Record<string, { bulkCreate: Function; rawAttributes?: Record<string, unknown> }>;
 
 function getModelRegistry(): ModelRegistry {
   const registry: ModelRegistry = {};
@@ -25,6 +26,87 @@ function getModelRegistry(): ModelRegistry {
   }
 
   return registry;
+}
+
+type DateFieldInfo = {
+  field: string;
+  typeKey: "DATE" | "DATEONLY";
+};
+
+function getDateFields(model: { rawAttributes?: Record<string, unknown> }): DateFieldInfo[] {
+  if (!model.rawAttributes) {
+    return [];
+  }
+
+  const results: DateFieldInfo[] = [];
+
+  for (const [field, attribute] of Object.entries(model.rawAttributes)) {
+    const type = (attribute as { type?: { key?: string; constructor?: { name?: string } } }).type;
+    const key = type?.key ?? type?.constructor?.name;
+
+    if (key === DataTypes.DATE.key || key === DataTypes.DATEONLY.key) {
+      const typeKey = key === DataTypes.DATE.key ? "DATE" : "DATEONLY";
+      results.push({ field, typeKey });
+    }
+  }
+
+  return results;
+}
+
+function normalizeDateValue(value: unknown, typeKey: "DATE" | "DATEONLY"): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const parsed = Date.parse(trimmed);
+    if (Number.isNaN(parsed)) {
+      return null;
+    }
+
+    const iso = new Date(parsed).toISOString();
+    return typeKey === "DATEONLY" ? iso.slice(0, 10) : iso;
+  }
+
+  const parsed = Date.parse(String(value));
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+
+  const iso = new Date(parsed).toISOString();
+  return typeKey === "DATEONLY" ? iso.slice(0, 10) : iso;
+}
+
+function sanitizeDateFields(
+  records: Record<string, string | null>[],
+  dateFields: DateFieldInfo[],
+): number {
+  if (dateFields.length === 0 || records.length === 0) {
+    return 0;
+  }
+
+  let sanitizedCount = 0;
+
+  for (const record of records) {
+    for (const { field, typeKey } of dateFields) {
+      if (!(field in record)) {
+        continue;
+      }
+
+      const normalized = normalizeDateValue(record[field], typeKey);
+      if (normalized === null && record[field] !== null) {
+        sanitizedCount += 1;
+      }
+      record[field] = normalized;
+    }
+  }
+
+  return sanitizedCount;
 }
 
 async function collectCsvFiles(rootDir: string): Promise<string[]> {
@@ -43,8 +125,8 @@ async function collectCsvFiles(rootDir: string): Promise<string[]> {
   return results;
 }
 
-async function readCsvFile(filePath: string): Promise<Record<string, string>[]> {
-  const records: Record<string, string>[] = [];
+async function readCsvFile(filePath: string): Promise<Record<string, string | null>[]> {
+  const records: Record<string, string | null>[] = [];
 
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(filePath)
@@ -99,6 +181,15 @@ export async function importZipFileToDatabase(
 
       if (records.length === 0) {
         continue;
+      }
+
+      const dateFields = getDateFields(model);
+      const sanitizedDates = sanitizeDateFields(records, dateFields);
+
+      if (sanitizedDates > 0) {
+        logger.warn(
+          `Sanitized ${sanitizedDates} invalid date values to null for ${tableName}`,
+        );
       }
 
       await model.bulkCreate(records, { ignoreDuplicates: true });
