@@ -7,6 +7,7 @@ import {
 import { logger } from "../config/logger";
 
 const DELETE_BATCH_SIZE = 5000;
+const DELETE_SAMPLE_SIZE = 1000;
 
 function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -74,9 +75,14 @@ export async function deleteOldUnapprovedArticles(
   let deletedCount = 0;
   let lastId = 0;
   let batchNumber = 0;
+  let didSampleEstimate = false;
 
   while (deletedCount < totalToDelete) {
     batchNumber += 1;
+    const batchSize =
+      !didSampleEstimate && totalToDelete > DELETE_BATCH_SIZE
+        ? DELETE_SAMPLE_SIZE
+        : DELETE_BATCH_SIZE;
     const batchConditions = [
       ...conditions,
       { id: { [Op.gt]: lastId } },
@@ -86,7 +92,7 @@ export async function deleteOldUnapprovedArticles(
       attributes: ["id"],
       where: { [Op.and]: batchConditions },
       order: [["id", "ASC"]],
-      limit: DELETE_BATCH_SIZE,
+      limit: batchSize,
       raw: true,
     });
 
@@ -102,9 +108,22 @@ export async function deleteOldUnapprovedArticles(
       break;
     }
 
+    const batchStart = Date.now();
     await Article.destroy({ where: { id: { [Op.in]: ids } } });
+    const batchDurationMs = Date.now() - batchStart;
     deletedCount += ids.length;
     lastId = ids[ids.length - 1];
+
+    if (!didSampleEstimate && batchSize === DELETE_SAMPLE_SIZE) {
+      didSampleEstimate = true;
+      const perItemMs = batchDurationMs / ids.length;
+      const remaining = totalToDelete - deletedCount;
+      const estimateMs = Math.round(perItemMs * remaining);
+      const estimateMinutes = Math.round((estimateMs / 60000) * 10) / 10;
+      logger.info(
+        `Estimated time remaining: ~${estimateMinutes} minutes based on ${ids.length} deletions.`,
+      );
+    }
 
     logger.info(
       `Deleted ${deletedCount} of ${totalToDelete} articles (batch ${batchNumber}).`,

@@ -15,14 +15,19 @@ function delay(ms: number): Promise<void> {
 }
 
 function logStatus(status: DatabaseStatus): void {
+  const numberFormatter = new Intl.NumberFormat("en-US");
+  const formatCount = (value: number) => numberFormatter.format(value);
   logger.info("Database status summary:");
-  logger.info(`- Total articles: ${status.totalArticles}`);
+  logger.info(`- Total articles: ${formatCount(status.totalArticles)}`);
   logger.info(
-    `- Articles marked not relevant: ${status.irrelevantArticles}`,
+    `- Articles marked not relevant: ${formatCount(status.irrelevantArticles)}`,
   );
-  logger.info(`- Articles approved: ${status.approvedArticles}`);
+  logger.info(`- Articles approved: ${formatCount(status.approvedArticles)}`);
   logger.info(
-    `- Articles older than ${status.cutoffDate}: ${status.oldArticles}`,
+    `- Articles older than ${status.cutoffDate}: ${formatCount(status.oldArticles)}`,
+  );
+  logger.info(
+    `- Articles older than ${status.cutoffDate} and eligible for deletion: ${formatCount(status.deletableOldArticles)}`,
   );
 }
 

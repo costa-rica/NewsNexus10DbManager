@@ -3,5 +3,6 @@ export type DatabaseStatus = {
   irrelevantArticles: number;
   approvedArticles: number;
   oldArticles: number;
+  deletableOldArticles: number;
   cutoffDate: string;
 };
