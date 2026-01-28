@@ -4,6 +4,9 @@ import {
   ArticleApproved,
   ArticleIsRelevant,
 } from "newsnexus10db";
+import { logger } from "../config/logger";
+
+const DELETE_BATCH_SIZE = 5000;
 
 function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -48,15 +51,65 @@ export async function deleteOldUnapprovedArticles(
     }
   }
 
-  const whereClause: Record<string, unknown> = {
-    publishedDate: { [Op.lt]: cutoffDateOnly },
-  };
+  const conditions: Record<string, unknown>[] = [
+    { publishedDate: { [Op.lt]: cutoffDateOnly } },
+  ];
 
   if (protectedIds.size > 0) {
-    whereClause.id = { [Op.notIn]: Array.from(protectedIds) };
+    conditions.push({ id: { [Op.notIn]: Array.from(protectedIds) } });
   }
 
-  const deletedCount = await Article.destroy({ where: whereClause });
+  const totalToDelete = await Article.count({
+    where: { [Op.and]: conditions },
+  });
+
+  logger.info(
+    `Found ${totalToDelete} articles eligible for deletion (before ${cutoffDateOnly}).`,
+  );
+
+  if (totalToDelete === 0) {
+    return { deletedCount: 0, cutoffDate: cutoffDateOnly };
+  }
+
+  let deletedCount = 0;
+  let lastId = 0;
+  let batchNumber = 0;
+
+  while (deletedCount < totalToDelete) {
+    batchNumber += 1;
+    const batchConditions = [
+      ...conditions,
+      { id: { [Op.gt]: lastId } },
+    ];
+
+    const rows = await Article.findAll({
+      attributes: ["id"],
+      where: { [Op.and]: batchConditions },
+      order: [["id", "ASC"]],
+      limit: DELETE_BATCH_SIZE,
+      raw: true,
+    });
+
+    if (rows.length === 0) {
+      break;
+    }
+
+    const ids = rows
+      .map((row) => Number((row as { id?: number }).id))
+      .filter((id) => Number.isFinite(id));
+
+    if (ids.length === 0) {
+      break;
+    }
+
+    await Article.destroy({ where: { id: { [Op.in]: ids } } });
+    deletedCount += ids.length;
+    lastId = ids[ids.length - 1];
+
+    logger.info(
+      `Deleted ${deletedCount} of ${totalToDelete} articles (batch ${batchNumber}).`,
+    );
+  }
 
   return { deletedCount, cutoffDate: cutoffDateOnly };
 }
