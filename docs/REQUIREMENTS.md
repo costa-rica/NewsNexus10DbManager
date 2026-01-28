@@ -24,3 +24,15 @@ The database backups are made by creating .csv files for each table them zipping
 I want to add the ability to receive an argument “--zip_file [full path to zip file and name]” then update the database with the contents of the zip file. The zip file contains csv files with the schema names of all the tables such as “Article.csv”.
 
 In the docs/references/adminDb.js I have added reference functions used to replenish the database from the ExpressJS API application. This currently works and we should use this as guideance to create the functionality for this microservice.
+
+## Logging
+
+Use the LOGGING_NODE_JS_V06.md file as a guide for logging.
+
+## Database Overview
+
+Use the DATABASE_OVERVIEW.md file as a guide for the database schema.
+
+## README
+
+Use the README-format.md file as a guide for the README file.
